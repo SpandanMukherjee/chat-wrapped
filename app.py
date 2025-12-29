@@ -286,6 +286,7 @@ def early_bird_slide():
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%} of their texts' for i,(n,r) in enumerate(ratios.items())])}</pre>", unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(8, max(3, len(ratios)*0.35)))
     fig.patch.set_facecolor('#ca70ad')
+    ax.barh(ratios.index[::-1], ratios.values[::-1], color='#8a1187')
     clean_plot(ax, fig, "Sunrise Activity Ratio")
     st.pyplot(fig)
 
