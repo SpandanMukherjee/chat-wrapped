@@ -77,7 +77,7 @@ def load_whatsapp_chat(file):
 @st.cache_data(show_spinner=False)
 def compute_master_metrics(df):
     m = {}
-    df = df.copy()
+    df = df.copy().sort_values('timestamp')
     df['hour'] = df['timestamp'].dt.hour
     df['weekday'] = df['timestamp'].dt.day_name()
     total_counts = df['sender'].value_counts()
@@ -225,6 +225,43 @@ def monthly_messages_slide():
     ax.bar(counts.index.strftime('%b'), counts.values, color='#8a1187')
     clean_plot(ax, fig, "Monthly Message Breakdown", "Month", "Messages")
     st.pyplot(fig)
+
+def great_silence_slide():
+    df = st.session_state.chat_df_2025.sort_values('timestamp')
+    df['gap'] = df['timestamp'].diff()
+    if not df['gap'].empty:
+        max_gap = df['gap'].max()
+        idx = df['gap'].idxmax()
+        end_date = df.loc[idx, 'timestamp']
+        start_date = end_date - max_gap
+        
+        slide("🏜️ The Great Silence", f"The chat went ghost for **{max_gap.days} days and {max_gap.components.hours} hours**.")
+        st.markdown(f"""
+            <div style='text-align:center; background:rgba(255,255,255,0.1); padding:20px; border-radius:15px; border: 1px solid rgba(255,255,255,0.2);'>
+                <p style="margin:0; opacity:0.8;">From: <b>{start_date.strftime('%B %d, %H:%M')}</b></p>
+                <p style="margin:5px 0;">⬇️</p>
+                <p style="margin:0; opacity:0.8;">To: <b>{end_date.strftime('%B %d, %H:%M')}</b></p>
+            </div>
+        """, unsafe_allow_html=True)
+
+def legend_search_slide():
+    df = st.session_state.chat_df_2025
+    slide("🔍 The Legend Search", "Settle the debates. How many times did we actually say it?")
+    
+    # User input with a default value
+    q = st.text_input("Search for an inside joke, a name, or a word:", "lol")
+    
+    if q:
+        # Case-insensitive search
+        res = df[df['message'].str.contains(q, case=False, na=False)]
+        count = len(res)
+        
+        st.markdown(f"<h1 style='text-align:center; color:#8a1187; font-size:60px;'>{count}</h1>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align:center;'>Mentions of <b>'{q}'</b> in 2025</p>", unsafe_allow_html=True)
+        
+        if not res.empty:
+            top_user = res['sender'].value_counts()
+            st.info(f"🏆 **{top_user.index[0]}** is the biggest fan of this word, saying it {top_user.values[0]} times.")
 
 def emoji_stats_slide():
     m = st.session_state.metrics
@@ -539,7 +576,7 @@ slides, slide_names = [first_slide], ["Welcome"]
 if "chat_df_2025" in st.session_state:
 
     active = [
-        (total_messages_slide, "Total Messages"), (monthly_messages_slide, "Calendar"),
+        (total_messages_slide, "Total Messages"), (monthly_messages_slide, "Calendar"), (great_silence_slide, "The Great Silence"),
         (emoji_stats_slide, "Emoji Holy Grail"), (favorite_emoji_per_user_slide, "Signatures"),
         (media_link_senders_slide, "Curators"), (busiest_hour_slide, "Prime Time"),
         (busiest_weekday_slide, "Weekly Grind"), (chat_boss_award_slide, "Chat Boss"),
@@ -550,7 +587,7 @@ if "chat_df_2025" in st.session_state:
         (tag_sniper_slide, "Sniper"), (tag_magnet_slide, "Magnet"),
         (conversation_starter_slide, "Ice Breaker"), (chat_closer_slide, "The Closer"),
         (emoji_awards_slide, "Emoji Emperor"), (media_per_message_slide, "Visual Learner"),
-        (links_per_message_slide, "Librarian"), (final_wrap_up_slide, "Finale")
+        (links_per_message_slide, "Librarian"), (legend_search_slide, "Legend Search"), (final_wrap_up_slide, "Finale")
     ]
 
     for fn, n in active:
@@ -569,10 +606,12 @@ slides[st.session_state.slide]()
 c1, c2 = st.columns([8,1])
 
 with c1:
+    st.write("")
 
     if st.session_state.slide > 0 and st.button("← Previous"):
         st.session_state.slide -= 1; st.rerun()
 with c2:
-
+    st.write("")
+    
     if st.session_state.slide < len(slides)-1 and st.button("Next →"):
         st.session_state.slide += 1; st.rerun()
