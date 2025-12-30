@@ -133,10 +133,13 @@ def compute_master_metrics(df):
         if not active.empty: sender_gaps[sender] = active.mean()
     m['sender_gaps'] = sender_gaps
 
-    # Connections (Tags)
+    # --- Connections (Tags) ---
     pair_counts = Counter()
+    total_tags_sent = Counter()      # NEW: Raw total sent
+    total_tags_received = Counter()  # NEW: Raw total received
     START, END = "\u2068", "\u2069"
     real_members = set(df["sender"].unique()) - {"Meta AI"}
+    
     for sender, msg in zip(df["sender"], df["message"].fillna("")):
         idx = 0
         while True:
@@ -145,9 +148,15 @@ def compute_master_metrics(df):
             e = msg.find(END, s+1)
             if e == -1: break
             tag = msg[s+1:e].strip()
+            
             pair_counts[(sender, tag)] += 1
+            total_tags_sent[sender] += 1      # Track raw sniper power
+            total_tags_received[tag] += 1     # Track raw magnet power
             idx = e + 1
+            
     m['pair_counts'] = pair_counts
+    m['total_tags_sent'] = total_tags_sent
+    m['total_tags_received'] = total_tags_received
     m['real_members'] = real_members
 
     # Social Rhythms
@@ -156,10 +165,12 @@ def compute_master_metrics(df):
     df_sorted['next_gap'] = df_sorted['gap_h'].shift(-1)
     m['closers'] = df_sorted[df_sorted['next_gap'] >= 3]['sender'].value_counts()
 
-    # The Big Summary
+    # --- The Big Summary ---
     m['hall_of_fame'] = {
         'boss': total_counts.idxmax(),
-        'sniper': max(pair_counts.items(), key=lambda x: x[1])[0][0] if pair_counts else "None",
+        # Fixed: Using most_common(1) for Counters to avoid AttributeError
+        'sniper': total_tags_sent.most_common(1)[0][0] if total_tags_sent else "None",
+        'magnet': total_tags_received.most_common(1)[0][0] if total_tags_received else "None",
         'starter': m['starters'].idxmax() if not m['starters'].empty else "None",
         'closer': m['closers'].idxmax() if not m['closers'].empty else "None",
         'spam_lord': min(sender_gaps, key=sender_gaps.get) if sender_gaps else "None",
@@ -177,7 +188,7 @@ def first_slide():
         uploaded = st.file_uploader("Drop your WhatsApp export here (.txt)", type=["txt"])
         if uploaded:
             st.snow()
-            st.toast("Loading...", icon="❤️‍🔥")
+            st.toast("Chat uploaded, Loading...", icon="❤️‍🔥")
             raw_df = load_whatsapp_chat(uploaded)
             df = raw_df[raw_df['timestamp'].notnull()]
             df = df[(df['timestamp'] >= datetime(2025, 1, 1)) & (df['timestamp'] < datetime(2026, 1, 1))]
@@ -347,7 +358,7 @@ def deleted_messages_slide():
         fig, ax = plt.subplots(figsize=(8, max(3, len(ratios)*0.35)))
         fig.patch.set_facecolor('#ca70ad')
         ax.barh(ratios.index[::-1], ratios.values[::-1], color='#8a1187')
-        clean_plot(ax, fig, "Fraction of Messages Deleted")
+        clean_plot(ax, fig, "Percentage of Messages Deleted")
         st.pyplot(fig)
     else:
         slide("😇 The Honest Squad", "Zero deleted messages found. Nothing to hide here!")
@@ -392,7 +403,7 @@ def emoji_awards_slide():
 def media_per_message_slide():
     df = st.session_state.chat_df_2025
     ratio = (df[df['message'].str.contains("<Media omitted", na=False)]['sender'].value_counts() / df['sender'].value_counts()).fillna(0).sort_values(ascending=False)
-    slide(f"📷 The Sensory Learner: {ratio.idxmax()}", "Voicenotes and images are worth 1,000 texts, and they know it.")
+    slide(f"📷 The Sensory Learner: {ratio.idxmax()}", "Voicenotes and pictures are worth 1,000 texts, and they know it.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%}' for i,(n,r) in enumerate(ratio.items())])}</pre>", unsafe_allow_html=True)
 
 def links_per_message_slide():
@@ -405,48 +416,59 @@ def tag_sniper_slide():
     m = st.session_state.metrics
     by_sender = defaultdict(Counter)
     for (s, t), c in m['pair_counts'].items(): by_sender[s][t] += c
+    sniper_favs = {s: tgts.most_common(1)[0] for s, tgts in by_sender.items()}
     
-    sniper_targets = {s: tgts.most_common(1)[0] for s, tgts in by_sender.items()}
-    # Sort for the list and graph
-    sorted_snipers = sorted(sniper_targets.items(), key=lambda x: x[1][1], reverse=True)
+    # Sort by total tags sent
+    sorted_snipers = sorted(m['total_tags_sent'].items(), key=lambda x: x[1], reverse=True)
     
-    slide(f"🏹 The Tag Sniper: {sorted_snipers[0][0]}", f"Their favorite target? **{sorted_snipers[0][1][0]}**.")
+    winner, total_shots = sorted_snipers[0]
+    fav_target = sniper_favs[winner][0]
     
-    st.markdown("### 🎯 Most Targeted Members")
-    st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {s} → {t} ({c}x)' for i,(s,(t,c)) in enumerate(sorted_snipers)])}</pre>", unsafe_allow_html=True)
+    slide(f"🏹 The Tag Sniper: {winner}", f"Fired off {total_shots} total tags! Favorite target: **{fav_target}**.")
     
-    # Graphing the 'Kill Count' (Total tags by sniper)
-    names = [x[0] for x in sorted_snipers][::-1]
-    counts = [x[1][1] for x in sorted_snipers][::-1]
+    st.markdown("### 🎯 Sniper Leaderboard")
+    rows = [f"{i+1}. {s}: {c} tags" for i, (s, c) in enumerate(sorted_snipers)]
+    st.markdown(f"<pre>{'<br>'.join(rows)}</pre>", unsafe_allow_html=True)
     
+    names = [x[0] for x in sorted_snipers[:10]][::-1]
+    counts = [x[1] for x in sorted_snipers[:10]][::-1]
     fig, ax = plt.subplots(figsize=(8, max(3, len(names)*0.35)))
     fig.patch.set_facecolor('#ca70ad')
     ax.barh(names, counts, color='#8a1187')
-    clean_plot(ax, fig, "Sniper Accuracy (Tags Sent)")
+    clean_plot(ax, fig, "Sniper Power (Total Tags Sent)")
     st.pyplot(fig)
 
 def tag_magnet_slide():
     m = st.session_state.metrics
+    # Identify top tagger for each magnet for the display
     incoming = {mem: Counter() for mem in m['real_members']}
     for (tagger, target), c in m['pair_counts'].items():
         if target in incoming: incoming[target][tagger] += c
-        
-    magnets = {mem: srcs.most_common(1)[0] for mem, srcs in incoming.items() if srcs}
-    sorted_magnets = sorted(magnets.items(), key=lambda x: x[1][1], reverse=True)
+    magnet_sources = {mem: srcs.most_common(1)[0] for mem, srcs in incoming.items() if srcs}
     
-    slide(f"🧲 The Tag Magnet: {sorted_magnets[0][0]}", "Everyone's calling for them. No escape.")
+    # NEW: Filter and Sort only by people in m['real_members']
+    valid_magnets = {name: count for name, count in m['total_tags_received'].items() if name in m['real_members']}
+    sorted_magnets = sorted(valid_magnets.items(), key=lambda x: x[1], reverse=True)
     
-    st.markdown("### 📢 Most Wanted List")
-    st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {m} ← {t} ({c}x)' for i,(m,(t,c)) in enumerate(sorted_magnets)])}</pre>", unsafe_allow_html=True)
+    if not sorted_magnets:
+        slide("🧲 The Tag Magnet", "No tags found between members!")
+        return
+
+    winner, total_pulls = sorted_magnets[0]
     
-    # Graphing the 'Magnetism' (Total tags received)
-    names = [x[0] for x in sorted_magnets][::-1]
-    counts = [x[1][1] for x in sorted_magnets][::-1]
+    slide(f"🧲 The Tag Magnet: {winner}", f"Everyone's calling... pulled into the chat {total_pulls} times!")
     
+    st.markdown("### 📢 Most Wanted")
+    rows = [f"{i+1}. {m_name}: {c} tags" for i, (m_name, c) in enumerate(sorted_magnets)]
+    st.markdown(f"<pre>{'<br>'.join(rows)}</pre>", unsafe_allow_html=True)
+    
+    # Graphing top 10 real members
+    names = [x[0] for x in sorted_magnets[:10]][::-1]
+    counts = [x[1] for x in sorted_magnets[:10]][::-1]
     fig, ax = plt.subplots(figsize=(8, max(3, len(names)*0.35)))
     fig.patch.set_facecolor('#ca70ad')
     ax.barh(names, counts, color='#8a1187')
-    clean_plot(ax, fig, "Magnetism Level (Tags Received)")
+    clean_plot(ax, fig, "Magnetism Level (Total Tags Received)")
     st.pyplot(fig)
 
 def final_wrap_up_slide():
@@ -454,14 +476,6 @@ def final_wrap_up_slide():
     df = st.session_state.chat_df_2025
     hall = m['hall_of_fame']
     
-    # Re-calculating Magnet logic for the finale
-    incoming = {mem: Counter() for mem in m['real_members']}
-    for (tagger, target), c in m['pair_counts'].items():
-        if target in incoming: incoming[target][tagger] += c
-    magnets = {mem: srcs.most_common(1)[0] for mem, srcs in incoming.items() if srcs}
-    sorted_magnets = sorted(magnets.items(), key=lambda x: x[1][1], reverse=True)
-    magnet_winner = sorted_magnets[0][0] if sorted_magnets else "None"
-
     slide("🎬 The 2025 Grand Finale", "One legendary year. One legendary squad.")
     st.write("")
     
@@ -477,21 +491,21 @@ def final_wrap_up_slide():
 
     col1, col2 = st.columns(2)
     
-    # The Full 12-Award Lineup
+    # Clean logic to ensure winners are pulled consistently
     awards = [
-        ("The Chat Boss", hall['boss'], "👑"),
+        ("The Chat Boss", f"{hall['boss']}", "👑"),
         ("The Spam Lord", hall['spam_lord'], "🧨"),
-        ("Evidence Buster", m['deleted_ratio'].idxmax() if not m['deleted_ratio'].empty else "None", "🕵️"),
+        ("Evidence Buster", f"{m['deleted_ratio'].idxmax() if not m['deleted_ratio'].empty else 'None'}", "🕵️"),
         ("Silent Observer", df["sender"].value_counts().idxmin(), "🕶️"),
         ("Ice Breaker", hall['starter'], "🌅"),
         ("The Closer", hall['closer'], "💤"),
         ("Night Owl", hall['night_owl'], "🌙"),
         ("The Philosopher", hall['philosopher'], "📜"),
-        ("Emoji Emperor", pd.Series(m['avg_emoji']).idxmax(), "🎭"),
-        ("Sensory Learner", (df[df['message'].str.contains("<Media omitted", na=False)]['sender'].value_counts() / df['sender'].value_counts()).idxmax(), "📸"),
-        ("Link Librarian", (df[df['message'].str.contains(LINK_REGEX, na=False)]['sender'].value_counts() / df['sender'].value_counts()).idxmax(), "🔗"),
-        ("Tag Sniper", hall['sniper'], "🏹"),
-        ("Tag Magnet", magnet_winner, "🧲"),
+        ("Emoji Emperor", f"{pd.Series(m['avg_emoji']).idxmax() if m['avg_emoji'] else 'None'}", "🎭"),
+        ("Tag Sniper", f"{hall['sniper']}", "🏹"),
+        ("Tag Magnet", f"{hall['magnet']}", "🧲"),
+        ("Sensory Learner", f"{(df[df['message'].str.contains('<Media omitted', na=False)]['sender'].value_counts() / df['sender'].value_counts()).idxmax()}", "📸"),
+        ("Link Librarian", f"{(df[df['message'].str.contains(LINK_REGEX, na=False)]['sender'].value_counts() / df['sender'].value_counts()).idxmax()}", "🔗"),
     ]
 
     for i, (title, winner, emoji) in enumerate(awards):
@@ -518,10 +532,10 @@ if "chat_df_2025" in st.session_state:
         (night_owl_slide, "Night Owl"), (weekend_warrior_slide, "Weekend Warrior"),
         (weekday_distractor_slide, "Distractor"), (message_length_awards_slide, "The Novelist"),
         (spam_lord_slide, "The Spammer"), (deleted_messages_slide, "Evidence Buster"), 
+        (tag_sniper_slide, "Sniper"), (tag_magnet_slide, "Magnet"),
         (conversation_starter_slide, "Ice Breaker"), (chat_closer_slide, "The Closer"),
         (emoji_awards_slide, "Emoji Emperor"), (media_per_message_slide, "Visual Learner"),
-        (links_per_message_slide, "Librarian"), (tag_sniper_slide, "Sniper"),
-        (tag_magnet_slide, "Magnet"), (final_wrap_up_slide, "Finale")
+        (links_per_message_slide, "Librarian"), (final_wrap_up_slide, "Finale")
     ]
     for fn, n in active:
         slides.append(fn); slide_names.append(n)
