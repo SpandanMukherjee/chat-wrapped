@@ -23,6 +23,7 @@ def clean_plot(ax, fig, title, xlabel="", ylabel=""):
     plt.tight_layout()
 
 def slide(title, subtitle, gradient=("purple", "pink")):
+
     st.markdown(
         f"""
             <div style="
@@ -51,9 +52,12 @@ def slide(title, subtitle, gradient=("purple", "pink")):
 def load_whatsapp_chat(file):
     lines = file.read().decode("utf-8").split("\n")
     data = []
+
     for line in lines:
+
         if " - " in line:
             timestamp_str, rest = line.split(" - ", 1)
+
             if ": " in rest:
                 sender, message = rest.split(": ", 1)
             else:
@@ -64,7 +68,9 @@ def load_whatsapp_chat(file):
                 timestamp = datetime.strptime(timestamp_str.strip(), "%d/%m/%Y, %I:%M %p")
             except:
                 timestamp = None
+
             data.append({"timestamp": timestamp, "sender": sender, "message": message})
+
     return pd.DataFrame(data)
 
 # --- PERFORMANCE ENGINE ---
@@ -82,7 +88,7 @@ def compute_master_metrics(df):
     m['most_active_day'] = df.groupby('date_only').size().idxmax()
     m['most_active_day_count'] = df.groupby('date_only').size().max()
     
-    # Monthly (Fixing the PeriodIndex bug)
+    # Monthly
     df['month_dt'] = df['timestamp'].dt.to_period('M').dt.to_timestamp()
     m['monthly_counts'] = df.groupby('month_dt').size()
     
@@ -91,13 +97,17 @@ def compute_master_metrics(df):
     sender_emoji_counts = Counter()
     sender_emoji_map = defaultdict(Counter)
     msg_counts = Counter()
+
     for msg, sender in zip(df["message"], df["sender"]):
+
         if not msg or not sender: continue
         msg_counts[sender] += 1
         chars = [c for c in msg if EMOJI_REGEX.match(c)]
         all_emojis.extend(chars)
         sender_emoji_counts[sender] += len(chars)
+
         for c in chars: sender_emoji_map[sender][c] += 1
+
     m['top_emojis'] = Counter(all_emojis)
     m['sender_emoji_counts'] = sender_emoji_counts
     m['sender_emoji_map'] = sender_emoji_map
@@ -118,40 +128,41 @@ def compute_master_metrics(df):
     m['sender_avg_len'] = df.groupby("sender")["msg_len"].mean()
 
     # Evidence Buster Logic
-    # We look for the exact WhatsApp deletion string
     deleted_df = df[df['message'].str.contains("This message was deleted|You deleted this message", na=False)]
     m['deleted_counts'] = deleted_df['sender'].value_counts()
-    # Calculating what % of their total messages were deleted
     m['deleted_ratio'] = (m['deleted_counts'] / total_counts).fillna(0).sort_values(ascending=False)
 
     # Rapid Fire
     sender_gaps = {}
     df_sorted = df.sort_values('timestamp')
+
     for sender, group in df_sorted.groupby('sender'):
         gaps = group['timestamp'].diff().dt.total_seconds().dropna()
         active = gaps[gaps <= 300]
+
         if not active.empty: sender_gaps[sender] = active.mean()
+
     m['sender_gaps'] = sender_gaps
 
     # --- Connections (Tags) ---
     pair_counts = Counter()
-    total_tags_sent = Counter()      # NEW: Raw total sent
-    total_tags_received = Counter()  # NEW: Raw total received
+    total_tags_sent = Counter()
+    total_tags_received = Counter()
     START, END = "\u2068", "\u2069"
     real_members = set(df["sender"].unique()) - {"Meta AI"}
     
     for sender, msg in zip(df["sender"], df["message"].fillna("")):
         idx = 0
+
         while True:
             s = msg.find(START, idx)
             if s == -1: break
             e = msg.find(END, s+1)
             if e == -1: break
             tag = msg[s+1:e].strip()
-            
             pair_counts[(sender, tag)] += 1
-            total_tags_sent[sender] += 1      # Track raw sniper power
-            total_tags_received[tag] += 1     # Track raw magnet power
+            total_tags_sent[sender] += 1
+            total_tags_received[tag] += 1
             idx = e + 1
             
     m['pair_counts'] = pair_counts
@@ -168,7 +179,6 @@ def compute_master_metrics(df):
     # --- The Big Summary ---
     m['hall_of_fame'] = {
         'boss': total_counts.idxmax(),
-        # Fixed: Using most_common(1) for Counters to avoid AttributeError
         'sniper': total_tags_sent.most_common(1)[0][0] if total_tags_sent else "None",
         'magnet': total_tags_received.most_common(1)[0][0] if total_tags_received else "None",
         'starter': m['starters'].idxmax() if not m['starters'].empty else "None",
@@ -184,8 +194,10 @@ def compute_master_metrics(df):
 
 def first_slide():
     slide("🎉 2025: A Year in Chat", "Your digital memories, decoded and delivered.")
+
     if "chat_df_2025" not in st.session_state:
         uploaded = st.file_uploader("Drop your WhatsApp export here (.txt)", type=["txt"])
+
         if uploaded:
             st.snow()
             st.toast("Chat uploaded, Loading...", icon="❤️‍🔥")
@@ -200,6 +212,7 @@ def first_slide():
 
 def total_messages_slide():
     m = st.session_state.metrics
+
     slide(f"🔥 {m['total_messages']} Messages Later...", 
           f"We peaked on {m['most_active_day'].strftime('%B %d')} with a massive {m['most_active_day_count']} texts!")
 
@@ -219,7 +232,7 @@ def emoji_stats_slide():
     slide("🎭 The Emoji Awards", "These five carried the entire chat on their backs.")
     st.markdown("### ✨ The Group's Holy Grail")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {e} — Used {c} times' for i,(e,c) in enumerate(top5)])}</pre>", unsafe_allow_html=True)
-    counts = pd.Series(m['sender_emoji_counts']).sort_values(ascending=True) # Ascending so leader is top in barh
+    counts = pd.Series(m['sender_emoji_counts']).sort_values(ascending=True)
     fig, ax = plt.subplots(figsize=(8, max(3, len(counts)*0.35)))
     fig.patch.set_facecolor('#ca70ad')
     ax.barh(counts.index, counts.values, color='#8a1187')
@@ -229,10 +242,13 @@ def emoji_stats_slide():
 def favorite_emoji_per_user_slide():
     m = st.session_state.metrics
     favorites = []
+
     for s, counter in m['sender_emoji_map'].items():
+
         if counter:
             fav, count = counter.most_common(1)[0]
             favorites.append((s, fav, count))
+
     favorites.sort(key=lambda x: x[2], reverse=True)
     slide("💖 The Signature Moves", "Every member had that one emoji they just couldn't drop.")
     rows = [f"{i+1}. {n} — {e} ({c} times)" for i,(n,e,c) in enumerate(favorites)]
@@ -242,6 +258,7 @@ def media_link_senders_slide():
     m = st.session_state.metrics
     slide("📸 The Content Curators", "Links, memes, and photos—the lifeblood of our chat.")
     col1, col2 = st.columns(2)
+
     with col1:
         data = m['media_counts'].sort_values(ascending=True)
         fig, ax = plt.subplots(figsize=(5, max(3, len(data)*0.35)))
@@ -249,6 +266,7 @@ def media_link_senders_slide():
         ax.barh(data.index, data.values, color='#8a1187')
         clean_plot(ax, fig, "Media Sent")
         st.pyplot(fig)
+
     with col2:
         data = m['link_counts'].sort_values(ascending=True)
         fig, ax = plt.subplots(figsize=(5, max(3, len(data)*0.35)))
@@ -350,11 +368,10 @@ def deleted_messages_slide():
     if not ratios.empty and ratios.max() > 0:
         winner = ratios.idxmax()
         slide(f"🕵️ The Evidence Buster: {winner}", "What was so scandalous it had to be removed? We'll never know.")
-        
+    
         st.markdown("### 🔍 The 'Oops' Leaderboard")
         st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%} of their messages' for i,(n,r) in enumerate(ratios.items())])}</pre>", unsafe_allow_html=True)
         
-        # Bar chart for deleted %
         fig, ax = plt.subplots(figsize=(8, max(3, len(ratios)*0.35)))
         fig.patch.set_facecolor('#ca70ad')
         ax.barh(ratios.index[::-1], ratios.values[::-1], color='#8a1187')
@@ -388,7 +405,7 @@ def chat_closer_slide():
 
 def emoji_awards_slide():
     m = st.session_state.metrics
-    avg = pd.Series(m['avg_emoji']).sort_values(ascending=True) # Ascending for correct barh ranking
+    avg = pd.Series(m['avg_emoji']).sort_values(ascending=True)
     slide(f"👑 Emoji Emperor: {avg.idxmax()}", "They don't just speak English; they speak Emoji.")
     
     st.markdown("### 🏆 The Decoration Leaderboard")
@@ -418,7 +435,6 @@ def tag_sniper_slide():
     for (s, t), c in m['pair_counts'].items(): by_sender[s][t] += c
     sniper_favs = {s: tgts.most_common(1)[0] for s, tgts in by_sender.items()}
     
-    # Sort by total tags sent
     sorted_snipers = sorted(m['total_tags_sent'].items(), key=lambda x: x[1], reverse=True)
     
     winner, total_shots = sorted_snipers[0]
@@ -440,13 +456,12 @@ def tag_sniper_slide():
 
 def tag_magnet_slide():
     m = st.session_state.metrics
-    # Identify top tagger for each magnet for the display
     incoming = {mem: Counter() for mem in m['real_members']}
+
     for (tagger, target), c in m['pair_counts'].items():
         if target in incoming: incoming[target][tagger] += c
+
     magnet_sources = {mem: srcs.most_common(1)[0] for mem, srcs in incoming.items() if srcs}
-    
-    # NEW: Filter and Sort only by people in m['real_members']
     valid_magnets = {name: count for name, count in m['total_tags_received'].items() if name in m['real_members']}
     sorted_magnets = sorted(valid_magnets.items(), key=lambda x: x[1], reverse=True)
     
@@ -462,7 +477,6 @@ def tag_magnet_slide():
     rows = [f"{i+1}. {m_name}: {c} tags" for i, (m_name, c) in enumerate(sorted_magnets)]
     st.markdown(f"<pre>{'<br>'.join(rows)}</pre>", unsafe_allow_html=True)
     
-    # Graphing top 10 real members
     names = [x[0] for x in sorted_magnets[:10]][::-1]
     counts = [x[1] for x in sorted_magnets[:10]][::-1]
     fig, ax = plt.subplots(figsize=(8, max(3, len(names)*0.35)))
@@ -491,7 +505,6 @@ def final_wrap_up_slide():
 
     col1, col2 = st.columns(2)
     
-    # Clean logic to ensure winners are pulled consistently
     awards = [
         ("The Chat Boss", f"{hall['boss']}", "👑"),
         ("The Spam Lord", hall['spam_lord'], "🧨"),
@@ -509,6 +522,7 @@ def final_wrap_up_slide():
     ]
 
     for i, (title, winner, emoji) in enumerate(awards):
+
         if i % 2 == 0:
             with col1: st.markdown(award_card(title, winner, emoji), unsafe_allow_html=True)
         else:
@@ -523,6 +537,7 @@ if "slide" not in st.session_state: st.session_state.slide = 0
 slides, slide_names = [first_slide], ["Welcome"]
 
 if "chat_df_2025" in st.session_state:
+
     active = [
         (total_messages_slide, "Total Messages"), (monthly_messages_slide, "Calendar"),
         (emoji_stats_slide, "Emoji Holy Grail"), (favorite_emoji_per_user_slide, "Signatures"),
@@ -537,12 +552,14 @@ if "chat_df_2025" in st.session_state:
         (emoji_awards_slide, "Emoji Emperor"), (media_per_message_slide, "Visual Learner"),
         (links_per_message_slide, "Librarian"), (final_wrap_up_slide, "Finale")
     ]
+
     for fn, n in active:
         slides.append(fn); slide_names.append(n)
 
 # Sidebar
 st.sidebar.title("📑 The Slide Deck")
 selected = st.sidebar.radio("Jump to", range(len(slides)), format_func=lambda i: slide_names[i], index=st.session_state.slide)
+
 if selected != st.session_state.slide:
     st.session_state.slide = selected; st.rerun()
 
@@ -550,9 +567,12 @@ st.progress((st.session_state.slide + 1) / len(slides))
 slides[st.session_state.slide]()
 
 c1, c2 = st.columns([8,1])
+
 with c1:
+
     if st.session_state.slide > 0 and st.button("← Previous"):
         st.session_state.slide -= 1; st.rerun()
 with c2:
+    
     if st.session_state.slide < len(slides)-1 and st.button("Next →"):
         st.session_state.slide += 1; st.rerun()
