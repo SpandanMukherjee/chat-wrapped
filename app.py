@@ -64,8 +64,16 @@ def load_whatsapp_chat(file):
                 sender = None
                 message = rest
             try:
-                timestamp_str = timestamp_str.replace('\u202f', ' ').replace('\u00a0', ' ')
-                timestamp = datetime.strptime(timestamp_str.strip(), "%d/%m/%Y, %I:%M %p")
+                timestamp_str = timestamp_str.replace('\u202f', ' ').replace('\u00a0', ' ').strip()
+                
+                try:
+                    timestamp = datetime.strptime(timestamp_str, "%d/%m/%Y, %I:%M %p")
+                except:
+
+                    try:
+                        timestamp = datetime.strptime(timestamp_str, "%d/%m/%y, %I:%M %p")
+                    except:
+                        timestamp = pd.to_datetime(timestamp_str, dayfirst=True, errors='coerce')
             except:
                 timestamp = None
 
