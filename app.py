@@ -130,7 +130,7 @@ def compute_master_metrics(df):
     # Evidence Buster Logic
     deleted_df = df[df['message'].str.contains("This message was deleted|You deleted this message", na=False)]
     m['deleted_counts'] = deleted_df['sender'].value_counts()
-    m['deleted_ratio'] = (m['deleted_counts'] / total_counts).fillna(0).sort_values(ascending=False)
+    m['deleted_ratio'] = (m['deleted_counts'] / total_counts.replace(0, 1)).fillna(0).sort_values(ascending=False)
 
     # Rapid Fire
     sender_gaps = {}
@@ -573,6 +573,6 @@ with c1:
     if st.session_state.slide > 0 and st.button("← Previous"):
         st.session_state.slide -= 1; st.rerun()
 with c2:
-    
+
     if st.session_state.slide < len(slides)-1 and st.button("Next →"):
         st.session_state.slide += 1; st.rerun()
