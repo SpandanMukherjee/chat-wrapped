@@ -46,7 +46,7 @@ def slide(title, subtitle, gradient=("purple", "pink")):
         """,
         unsafe_allow_html=True
     )
-    st.write("") # Essential gap
+    st.write("") 
 
 # --- Parser ---
 def load_whatsapp_chat(file):
@@ -245,27 +245,43 @@ def great_silence_slide():
             </div>
         """, unsafe_allow_html=True)
 
+import re
+
 def legend_search_slide():
     df = st.session_state.chat_df_2025
     slide("🔍 The Legend Search", "Settle the debates. How many times did we actually say it?")
-    
-    # User input with a default value
     q = st.text_input("Search for an inside joke, a name, or a word:", "lol")
     
     if q:
-        # Case-insensitive search
-        res = df[df['message'].str.contains(q, case=False, na=False)]
-        count = len(res)
+        # Create a regex pattern with word boundaries (\b)
+        # This ensures 'radio' doesn't match 'radiohead'
+        pattern = r'\b' + re.escape(q) + r'\b'
         
-        st.markdown(f"<h1 style='text-align:center; color:#8a1187; font-size:60px;'>{count}</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align:center;'>Mentions of <b>'{q}'</b> in 2025</p>", unsafe_allow_html=True)
+        # Calculate occurrences per message
+        # We use str.count to get every mention (e.g., 'lol lol' = 2)
+        df['temp_count'] = df['message'].str.count(pattern, flags=re.IGNORECASE).fillna(0).astype(int)
+        
+        # Filter to only messages that contain the word
+        res = df[df['temp_count'] > 0].copy()
+        total_mentions = int(df['temp_count'].sum())
+        
+        st.markdown(f"<h1 style='text-align:center; color:#8a1187; font-size:60px;'>{total_mentions}</h1>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align:center;'>Total mentions of <b>'{q}'</b> in 2025</p>", unsafe_allow_html=True)
         
         if not res.empty:
+            # Most active hour for this word
             peak_hour = res['timestamp'].dt.hour.value_counts().idxmax()
             time_display = f"{peak_hour:02d}:00"
-            top_user = res['sender'].value_counts()
-            st.info(f"🏆 {top_user.index[0]} is the biggest fan of this word, saying it {top_user.values[0]} times.")
+            
+            # Identify the leader based on actual mention count, not just message count
+            user_counts = df.groupby('sender')['temp_count'].sum().sort_values(ascending=False)
+            top_user = user_counts.index[0]
+            top_val = int(user_counts.values[0])
+            
+            st.info(f"🏆 {top_user} is the biggest fan of this word, saying it {top_val} times.")
             st.write(f"⏰ This word is most commonly used around {time_display}.")
+        else:
+            st.warning(f"Nobody said '{q}' as a standalone word this year!")
 
 def emoji_stats_slide():
     m = st.session_state.metrics
