@@ -117,6 +117,13 @@ def compute_master_metrics(df):
     df["msg_len"] = df["message"].apply(lambda x: len(x) if x else 0)
     m['sender_avg_len'] = df.groupby("sender")["msg_len"].mean()
 
+    # Evidence Buster Logic
+    # We look for the exact WhatsApp deletion string
+    deleted_df = df[df['message'].str.contains("This message was deleted|You deleted this message", na=False)]
+    m['deleted_counts'] = deleted_df['sender'].value_counts()
+    # Calculating what % of their total messages were deleted
+    m['deleted_ratio'] = (m['deleted_counts'] / total_counts).fillna(0).sort_values(ascending=False)
+
     # Rapid Fire
     sender_gaps = {}
     df_sorted = df.sort_values('timestamp')
@@ -325,6 +332,26 @@ def message_length_awards_slide():
     clean_plot(ax, fig, "Average Characters per Message")
     st.pyplot(fig)
 
+def deleted_messages_slide():
+    m = st.session_state.metrics
+    ratios = m['deleted_ratio']
+    
+    if not ratios.empty and ratios.max() > 0:
+        winner = ratios.idxmax()
+        slide(f"🕵️ The Evidence Buster: {winner}", "What was so scandalous it had to be removed? We'll never know.")
+        
+        st.markdown("### 🔍 The 'Oops' Leaderboard")
+        st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%} of their messages' for i,(n,r) in enumerate(ratios.items())])}</pre>", unsafe_allow_html=True)
+        
+        # Bar chart for deleted %
+        fig, ax = plt.subplots(figsize=(8, max(3, len(ratios)*0.35)))
+        fig.patch.set_facecolor('#ca70ad')
+        ax.barh(ratios.index[::-1], ratios.values[::-1], color='#8a1187')
+        clean_plot(ax, fig, "Fraction of Messages Deleted")
+        st.pyplot(fig)
+    else:
+        slide("😇 The Honest Squad", "Zero deleted messages found. Nothing to hide here!")
+
 def spam_lord_slide():
     m = st.session_state.metrics
     gaps = pd.Series(m['sender_gaps']).sort_values()
@@ -454,6 +481,7 @@ def final_wrap_up_slide():
     awards = [
         ("The Chat Boss", hall['boss'], "👑"),
         ("The Spam Lord", hall['spam_lord'], "🧨"),
+        ("Evidence Buster", m['deleted_ratio'].idxmax() if not m['deleted_ratio'].empty else "None", "🕵️"),
         ("Silent Observer", df["sender"].value_counts().idxmin(), "🕶️"),
         ("Ice Breaker", hall['starter'], "🌅"),
         ("The Closer", hall['closer'], "💤"),
@@ -489,11 +517,11 @@ if "chat_df_2025" in st.session_state:
         (silent_observer_award_slide, "Silent Observer"), (early_bird_slide, "Early Bird"),
         (night_owl_slide, "Night Owl"), (weekend_warrior_slide, "Weekend Warrior"),
         (weekday_distractor_slide, "Distractor"), (message_length_awards_slide, "The Novelist"),
-        (spam_lord_slide, "The Spammer"), (conversation_starter_slide, "Ice Breaker"),
-        (chat_closer_slide, "The Closer"), (emoji_awards_slide, "Emoji Emperor"),
-        (media_per_message_slide, "Visual Learner"), (links_per_message_slide, "Librarian"),
-        (tag_sniper_slide, "Sniper"), (tag_magnet_slide, "Magnet"),
-        (final_wrap_up_slide, "Finale")
+        (spam_lord_slide, "The Spammer"), (deleted_messages_slide, "Evidence Buster"), 
+        (conversation_starter_slide, "Ice Breaker"), (chat_closer_slide, "The Closer"),
+        (emoji_awards_slide, "Emoji Emperor"), (media_per_message_slide, "Visual Learner"),
+        (links_per_message_slide, "Librarian"), (tag_sniper_slide, "Sniper"),
+        (tag_magnet_slide, "Magnet"), (final_wrap_up_slide, "Finale")
     ]
     for fn, n in active:
         slides.append(fn); slide_names.append(n)
