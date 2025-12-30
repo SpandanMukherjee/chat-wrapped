@@ -185,6 +185,7 @@ def compute_master_metrics(df):
         'closer': m['closers'].idxmax() if not m['closers'].empty else "None",
         'spam_lord': min(sender_gaps, key=sender_gaps.get) if sender_gaps else "None",
         'night_owl': m['night_ratio'].idxmax() if not m['night_ratio'].empty else "None",
+        'early_bird': m['morning_ratio'].idxmax() if not m['morning_ratio'].empty else "None",
         'media_king': m['media_counts'].idxmax() if not m['media_counts'].empty else "None",
         'philosopher': m['sender_avg_len'].idxmax() if not m['sender_avg_len'].empty else "None"
     }
@@ -235,7 +236,7 @@ def great_silence_slide():
         end_date = df.loc[idx, 'timestamp']
         start_date = end_date - max_gap
         
-        slide("🏜️ The Great Silence", f"The chat went ghost for **{max_gap.days} days and {max_gap.components.hours} hours**.")
+        slide("🏜️ The Great Silence", f"The chat went ghost for {max_gap.days} days and {max_gap.components.hours} hours.")
         st.markdown(f"""
             <div style='text-align:center; background:rgba(255,255,255,0.1); padding:20px; border-radius:15px; border: 1px solid rgba(255,255,255,0.2);'>
                 <p style="margin:0; opacity:0.8;">From: <b>{start_date.strftime('%B %d, %H:%M')}</b></p>
@@ -260,8 +261,11 @@ def legend_search_slide():
         st.markdown(f"<p style='text-align:center;'>Mentions of <b>'{q}'</b> in 2025</p>", unsafe_allow_html=True)
         
         if not res.empty:
+            peak_hour = res['timestamp'].dt.hour.value_counts().idxmax()
+            time_display = f"{peak_hour:02d}:00"
             top_user = res['sender'].value_counts()
-            st.info(f"🏆 **{top_user.index[0]}** is the biggest fan of this word, saying it {top_user.values[0]} times.")
+            st.info(f"🏆 {top_user.index[0]} is the biggest fan of this word, saying it {top_user.values[0]} times.")
+            st.write(f"⏰ This word is most commonly used around {time_display}.")
 
 def emoji_stats_slide():
     m = st.session_state.metrics
@@ -477,7 +481,7 @@ def tag_sniper_slide():
     winner, total_shots = sorted_snipers[0]
     fav_target = sniper_favs[winner][0]
     
-    slide(f"🏹 The Tag Sniper: {winner}", f"Fired off {total_shots} total tags! Favorite target: **{fav_target}**.")
+    slide(f"🏹 The Tag Sniper: {winner}", f"Fired off {total_shots} total tags! Favorite target: {fav_target}.")
     
     st.markdown("### 🎯 Sniper Leaderboard")
     rows = [f"{i+1}. {s}: {c} tags" for i, (s, c) in enumerate(sorted_snipers)]
@@ -550,6 +554,7 @@ def final_wrap_up_slide():
         ("Ice Breaker", hall['starter'], "🌅"),
         ("The Closer", hall['closer'], "💤"),
         ("Night Owl", hall['night_owl'], "🌙"),
+        ("Early Bird", hall['early_bird'], "🌅"),
         ("The Philosopher", hall['philosopher'], "📜"),
         ("Emoji Emperor", f"{pd.Series(m['avg_emoji']).idxmax() if m['avg_emoji'] else 'None'}", "🎭"),
         ("Tag Sniper", f"{hall['sniper']}", "🏹"),
@@ -586,7 +591,7 @@ if "chat_df_2025" in st.session_state:
         (spam_lord_slide, "The Spammer"), (deleted_messages_slide, "Evidence Buster"), 
         (tag_sniper_slide, "Sniper"), (tag_magnet_slide, "Magnet"),
         (conversation_starter_slide, "Ice Breaker"), (chat_closer_slide, "The Closer"),
-        (emoji_awards_slide, "Emoji Emperor"), (media_per_message_slide, "Visual Learner"),
+        (emoji_awards_slide, "Emoji Emperor"), (media_per_message_slide, "Sensory Learner"),
         (links_per_message_slide, "Librarian"), (legend_search_slide, "Legend Search"), (final_wrap_up_slide, "Finale")
     ]
 
@@ -612,6 +617,6 @@ with c1:
         st.session_state.slide -= 1; st.rerun()
 with c2:
     st.write("")
-    
+
     if st.session_state.slide < len(slides)-1 and st.button("Next →"):
         st.session_state.slide += 1; st.rerun()
