@@ -4,7 +4,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import re
 from collections import Counter, defaultdict
-import numpy as np
+ 
 
 st.set_page_config(page_title="Chat Wrapped", layout="centered")
 
@@ -47,6 +47,29 @@ def slide(title, subtitle, gradient=("purple", "pink")):
         unsafe_allow_html=True
     )
     st.write("") 
+
+# --- Safety Helpers ---
+def safe_idxmax(s, default="None"):
+    try:
+        if getattr(s, "empty", False):
+            return default
+        return s.idxmax()
+    except Exception:
+        try:
+            return max(s) if s else default
+        except Exception:
+            return default
+
+def safe_idxmin(s, default="None"):
+    try:
+        if getattr(s, "empty", False):
+            return default
+        return s.idxmin()
+    except Exception:
+        try:
+            return min(s) if s else default
+        except Exception:
+            return default
 
 # --- Parser ---
 def load_whatsapp_chat(file):
@@ -132,7 +155,7 @@ def compute_master_metrics(df):
     m['weekday_ratio'] = (df[df['weekday'].isin(["Monday","Tuesday","Wednesday","Thursday","Friday"])]['sender'].value_counts() / total_counts).fillna(0)
 
     # Complexity
-    df["msg_len"] = df["message"].apply(lambda x: len(x) if x else 0)
+    df["msg_len"] = df["message"].apply(lambda x: len(x) if isinstance(x, str) else 0)
     m['sender_avg_len'] = df.groupby("sender")["msg_len"].mean()
 
     # Evidence Buster Logic
@@ -251,15 +274,18 @@ def monthly_messages_slide():
     st.pyplot(fig)
 
 def great_silence_slide():
-    df = st.session_state.chat_df_2025.sort_values('timestamp')
+    df = st.session_state.chat_df_2025.sort_values('timestamp').copy()
     df['gap'] = df['timestamp'].diff()
-    if not df['gap'].empty:
+    if not df['gap'].dropna().empty:
         max_gap = df['gap'].max()
         idx = df['gap'].idxmax()
         end_date = df.loc[idx, 'timestamp']
         start_date = end_date - max_gap
-        
-        slide("🏜️ The Great Silence", f"The chat went ghost for {max_gap.days} days and {max_gap.components.hours} hours.")
+        total_seconds = int(max_gap.total_seconds())
+        days = total_seconds // 86400
+        hours = (total_seconds % 86400) // 3600
+
+        slide("🏜️ The Great Silence", f"The chat went ghost for {days} days and {hours} hours.")
         st.markdown(f"""
             <div style='text-align:center; background:rgba(255,255,255,0.1); padding:20px; border-radius:15px; border: 1px solid rgba(255,255,255,0.2);'>
                 <p style="margin:0; opacity:0.8;">From: <b>{start_date.strftime('%B %d, %H:%M')}</b></p>
@@ -360,7 +386,11 @@ def silent_observer_award_slide():
 def early_bird_slide():
     m = st.session_state.metrics
     ratios = m['morning_ratio'].sort_values(ascending=False)
-    slide(f"🌅 The Early Bird: {ratios.idxmax()}", "They speak while the rest of us are still dreaming.")
+    if getattr(ratios, 'empty', False):
+        slide("🌅 The Early Bird: None", "No morning activity found.")
+        return
+    winner = safe_idxmax(ratios, "None")
+    slide(f"🌅 The Early Bird: {winner}", "They speak while the rest of us are still dreaming.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%} of their texts' for i,(n,r) in enumerate(ratios.items())])}</pre>", unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(8, max(3, len(ratios)*0.35)))
     fig.patch.set_facecolor('#ca70ad')
@@ -371,7 +401,11 @@ def early_bird_slide():
 def night_owl_slide():
     m = st.session_state.metrics
     ratios = m['night_ratio'].sort_values(ascending=False)
-    slide(f"🌙 The Night Owl: {ratios.idxmax()}", "The group chat doesn't sleep until they do.")
+    if getattr(ratios, 'empty', False):
+        slide("🌙 The Night Owl: None", "No night activity found.")
+        return
+    winner = safe_idxmax(ratios, "None")
+    slide(f"🌙 The Night Owl: {winner}", "The group chat doesn't sleep until they do.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%} of their texts' for i,(n,r) in enumerate(ratios.items())])}</pre>", unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(8, max(3, len(ratios)*0.35)))
     fig.patch.set_facecolor('#ca70ad')
@@ -382,13 +416,21 @@ def night_owl_slide():
 def weekend_warrior_slide():
     m = st.session_state.metrics
     ratios = m['weekend_ratio'].sort_values(ascending=False)
-    slide(f"🎉 The Weekend Warrior: {ratios.idxmax()}", "They wait all week just to drop the Saturday heat.")
+    if getattr(ratios, 'empty', False):
+        slide("🎉 The Weekend Warrior: None", "No weekend activity found.")
+        return
+    winner = safe_idxmax(ratios, "None")
+    slide(f"🎉 The Weekend Warrior: {winner}", "They wait all week just to drop the Saturday heat.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%}' for i,(n,r) in enumerate(ratios.items())])}</pre>", unsafe_allow_html=True)
 
 def weekday_distractor_slide():
     m = st.session_state.metrics
     ratios = m['weekday_ratio'].sort_values(ascending=False)
-    slide(f"🧑‍💻 The Professional Distractor: {ratios.idxmax()}", "Keeping the group alive during work hours.")
+    if getattr(ratios, 'empty', False):
+        slide("🧑‍💻 The Professional Distractor: None", "No weekday activity found.")
+        return
+    winner = safe_idxmax(ratios, "None")
+    slide(f"🧑‍💻 The Professional Distractor: {winner}", "Keeping the group alive during work hours.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%}' for i,(n,r) in enumerate(ratios.items())])}</pre>", unsafe_allow_html=True)
 
 def message_length_awards_slide():
@@ -425,7 +467,11 @@ def deleted_messages_slide():
 def spam_lord_slide():
     m = st.session_state.metrics
     gaps = pd.Series(m['sender_gaps']).sort_values()
-    slide(f"🧨 The Spam Lord: {gaps.idxmin()}", "Fastest fingers in the west. Good luck keeping up.")
+    if gaps.empty:
+        slide("🧨 The Spam Lord: None", "No rapid-fire users found.")
+        return
+    winner = safe_idxmin(gaps, "None")
+    slide(f"🧨 The Spam Lord: {winner}", "Fastest fingers in the west. Good luck keeping up.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {v:.1f}s between texts' for i,(n,v) in enumerate(gaps.items())])}</pre>", unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(8, max(3, len(gaps)*0.35)))
     fig.patch.set_facecolor('#ca70ad')
@@ -436,19 +482,31 @@ def spam_lord_slide():
 def conversation_starter_slide():
     m = st.session_state.metrics
     counts = m['starters'].sort_values(ascending=False)
-    slide(f"🌅 The Ice Breaker: {counts.idxmax()}", "The brave soul who revives the chat after every silence.")
+    if getattr(counts, 'empty', False):
+        slide("🌅 The Ice Breaker: None", "No conversation starters found.")
+        return
+    winner = safe_idxmax(counts, "None")
+    slide(f"🌅 The Ice Breaker: {winner}", "The brave soul who revives the chat after every silence.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {c} revivals' for i,(n,c) in enumerate(counts.items())])}</pre>", unsafe_allow_html=True)
 
 def chat_closer_slide():
     m = st.session_state.metrics
     counts = m['closers'].sort_values(ascending=False)
-    slide(f"💤 The Chat Closer: {counts.idxmax()}", "Always gets the last word. Always.")
+    if getattr(counts, 'empty', False):
+        slide("💤 The Chat Closer: None", "No chat closers found.")
+        return
+    winner = safe_idxmax(counts, "None")
+    slide(f"💤 The Chat Closer: {winner}", "Always gets the last word. Always.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {c} final words' for i,(n,c) in enumerate(counts.items())])}</pre>", unsafe_allow_html=True)
 
 def emoji_awards_slide():
     m = st.session_state.metrics
     avg = pd.Series(m['avg_emoji']).sort_values(ascending=True)
-    slide(f"👑 Emoji Emperor: {avg.idxmax()}", "They don't just speak English; they speak Emoji.")
+    if getattr(avg, 'empty', False):
+        slide("👑 Emoji Emperor: None", "No emoji usage data found.")
+        return
+    winner = safe_idxmax(avg, "None")
+    slide(f"👑 Emoji Emperor: {winner}", "They don't just speak English; they speak Emoji.")
     
     st.markdown("### 🏆 The Decoration Leaderboard")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {v:.2f} per msg' for i,(n,v) in enumerate(avg.iloc[::-1].items())])}</pre>", unsafe_allow_html=True)
@@ -462,13 +520,21 @@ def emoji_awards_slide():
 def media_per_message_slide():
     df = st.session_state.chat_df_2025
     ratio = (df[df['message'].str.contains("<Media omitted", na=False)]['sender'].value_counts() / df['sender'].value_counts()).fillna(0).sort_values(ascending=False)
-    slide(f"📷 The Sensory Learner: {ratio.idxmax()}", "Voicenotes and pictures are worth 1,000 texts, and they know it.")
+    if getattr(ratio, 'empty', False):
+        slide("📷 The Sensory Learner: None", "No media detected in chat.")
+        return
+    winner = safe_idxmax(ratio, "None")
+    slide(f"📷 The Sensory Learner: {winner}", "Voicenotes and pictures are worth 1,000 texts, and they know it.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%}' for i,(n,r) in enumerate(ratio.items())])}</pre>", unsafe_allow_html=True)
 
 def links_per_message_slide():
     df = st.session_state.chat_df_2025
     ratio = (df[df['message'].str.contains(LINK_REGEX, na=False)]['sender'].value_counts() / df['sender'].value_counts()).fillna(0).sort_values(ascending=False)
-    slide(f"🔗 The Link Librarian: {ratio.idxmax()}", "Our personal source for everything on the internet.")
+    if getattr(ratio, 'empty', False):
+        slide("🔗 The Link Librarian: None", "No links shared in chat.")
+        return
+    winner = safe_idxmax(ratio, "None")
+    slide(f"🔗 The Link Librarian: {winner}", "Our personal source for everything on the internet.")
     st.markdown(f"<pre>{'<br>'.join([f'{i+1}. {n}: {r:.1%}' for i,(n,r) in enumerate(ratio.items())])}</pre>", unsafe_allow_html=True)
 
 def tag_sniper_slide():
@@ -478,10 +544,13 @@ def tag_sniper_slide():
     sniper_favs = {s: tgts.most_common(1)[0] for s, tgts in by_sender.items()}
     
     sorted_snipers = sorted(m['total_tags_sent'].items(), key=lambda x: x[1], reverse=True)
-    
+    if not sorted_snipers:
+        slide("🏹 The Tag Sniper: None", "No tags sent among members.")
+        return
+
     winner, total_shots = sorted_snipers[0]
-    fav_target = sniper_favs[winner][0]
-    
+    fav_target = sniper_favs.get(winner, ("None", 0))[0]
+
     slide(f"🏹 The Tag Sniper: {winner}", f"Fired off {total_shots} total tags! Favorite target: {fav_target}.")
     
     st.markdown("### 🎯 Sniper Leaderboard")
@@ -528,7 +597,7 @@ def tag_magnet_slide():
     st.pyplot(fig)
 
 def legend_search_slide():
-    df = st.session_state.chat_df_2025
+    df = st.session_state.chat_df_2025.copy()
     slide("🔍 The Legend Search", "Settle the debates. How many times did we actually say it?")
     q = st.text_input("Search for an inside joke, a name, or a word:", "lol")
     
@@ -558,6 +627,12 @@ def final_wrap_up_slide():
     df = st.session_state.chat_df_2025
     hall = m['hall_of_fame']
     
+    # compute safe winners for ratios that may be empty
+    sensory_ratio = (df[df['message'].str.contains('<Media omitted', na=False)]['sender'].value_counts() / df['sender'].value_counts()).fillna(0)
+    sensory_winner = safe_idxmax(sensory_ratio, 'None')
+    link_ratio = (df[df['message'].str.contains(LINK_REGEX, na=False)]['sender'].value_counts() / df['sender'].value_counts()).fillna(0)
+    link_winner = safe_idxmax(link_ratio, 'None')
+
     slide("🎬 The 2025 Grand Finale", "One legendary year. One legendary squad.")
     st.write("")
     
@@ -586,8 +661,8 @@ def final_wrap_up_slide():
         ("Emoji Emperor", f"{pd.Series(m['avg_emoji']).idxmax() if m['avg_emoji'] else 'None'}", "🎭"),
         ("Tag Sniper", f"{hall['sniper']}", "🏹"),
         ("Tag Magnet", f"{hall['magnet']}", "🧲"),
-        ("Sensory Learner", f"{(df[df['message'].str.contains('<Media omitted', na=False)]['sender'].value_counts() / df['sender'].value_counts()).idxmax()}", "📸"),
-        ("Link Librarian", f"{(df[df['message'].str.contains(LINK_REGEX, na=False)]['sender'].value_counts() / df['sender'].value_counts()).idxmax()}", "🔗"),
+        ("Sensory Learner", f"{sensory_winner}", "📸"),
+        ("Link Librarian", f"{link_winner}", "🔗"),
     ]
 
     for i, (title, winner, emoji) in enumerate(awards):
