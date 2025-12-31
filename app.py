@@ -230,7 +230,11 @@ def first_slide():
             print(f"Dev Log: {e}")
 
 def total_messages_slide():
-    st.snow()
+    
+    if "snow_played" not in st.session_state:
+        st.snow()
+        st.session_state.snow_played = True
+
     m = st.session_state.metrics
 
     slide(f"🔥 {m['total_messages']} Messages Later...", 
