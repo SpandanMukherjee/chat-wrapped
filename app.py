@@ -207,19 +207,30 @@ def first_slide():
     if "chat_df_2025" not in st.session_state:
         uploaded = st.file_uploader("Drop your WhatsApp export here (.txt)", type=["txt"])
 
-        if uploaded:
-            st.snow()
-            st.toast("Chat uploaded, Loading...", icon="❤️‍🔥")
-            raw_df = load_whatsapp_chat(uploaded)
-            df = raw_df[raw_df['timestamp'].notnull()]
-            df = df[(df['timestamp'] >= datetime(2025, 1, 1)) & (df['timestamp'] < datetime(2026, 1, 1))]
-            df = df[df['sender'] != "Meta AI"]
-            st.session_state.chat_df_2025 = df
-            st.session_state.metrics = compute_master_metrics(df)
-            st.session_state.slide = 1
-            st.rerun()
+        try:
+
+            if uploaded:
+                st.toast("Chat uploaded, Loading...", icon="❤️‍🔥")
+                raw_df = load_whatsapp_chat(uploaded)
+                df = raw_df[raw_df['timestamp'].notnull()]
+                df = df[(df['timestamp'] >= datetime(2025, 1, 1)) & (df['timestamp'] < datetime(2026, 1, 1))]
+                df = df[df['sender'] != "Meta AI"]
+
+                if df.empty:
+                    st.error("No messages found for the year 2025. Please upload a valid WhatsApp chat export that includes messages from 2025.")
+                else:
+                    st.session_state.chat_df_2025 = df
+                    st.session_state.metrics = compute_master_metrics(df)
+                    st.session_state.slide = 1
+                    st.rerun()
+
+        except Exception as e:
+            st.error(f"Error processing chat file:")
+            st.info("Make sure the file is a valid WhatsApp chat export (without media) in .txt format.")
+            print(f"Dev Log: {e}")
 
 def total_messages_slide():
+    st.snow()
     m = st.session_state.metrics
 
     slide(f"🔥 {m['total_messages']} Messages Later...", 
@@ -252,44 +263,6 @@ def great_silence_slide():
                 <p style="margin:0; opacity:0.8;">To: <b>{end_date.strftime('%B %d, %H:%M')}</b></p>
             </div>
         """, unsafe_allow_html=True)
-
-import re
-
-def legend_search_slide():
-    df = st.session_state.chat_df_2025
-    slide("🔍 The Legend Search", "Settle the debates. How many times did we actually say it?")
-    q = st.text_input("Search for an inside joke, a name, or a word:", "lol")
-    
-    if q:
-        # Create a regex pattern with word boundaries (\b)
-        # This ensures 'radio' doesn't match 'radiohead'
-        pattern = r'\b' + re.escape(q) + r'\b'
-        
-        # Calculate occurrences per message
-        # We use str.count to get every mention (e.g., 'lol lol' = 2)
-        df['temp_count'] = df['message'].str.count(pattern, flags=re.IGNORECASE).fillna(0).astype(int)
-        
-        # Filter to only messages that contain the word
-        res = df[df['temp_count'] > 0].copy()
-        total_mentions = int(df['temp_count'].sum())
-        
-        st.markdown(f"<h1 style='text-align:center; color:#8a1187; font-size:60px;'>{total_mentions}</h1>", unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align:center;'>Total mentions of <b>'{q}'</b> in 2025</p>", unsafe_allow_html=True)
-        
-        if not res.empty:
-            # Most active hour for this word
-            peak_hour = res['timestamp'].dt.hour.value_counts().idxmax()
-            time_display = f"{peak_hour:02d}:00"
-            
-            # Identify the leader based on actual mention count, not just message count
-            user_counts = df.groupby('sender')['temp_count'].sum().sort_values(ascending=False)
-            top_user = user_counts.index[0]
-            top_val = int(user_counts.values[0])
-            
-            st.info(f"🏆 {top_user} is the biggest fan of this word, saying it {top_val} times.")
-            st.write(f"⏰ This word is most commonly used around {time_display}.")
-        else:
-            st.warning(f"Nobody said '{q}' as a standalone word this year!")
 
 def emoji_stats_slide():
     m = st.session_state.metrics
@@ -549,6 +522,32 @@ def tag_magnet_slide():
     ax.barh(names, counts, color='#8a1187')
     clean_plot(ax, fig, "Magnetism Level (Total Tags Received)")
     st.pyplot(fig)
+
+def legend_search_slide():
+    df = st.session_state.chat_df_2025
+    slide("🔍 The Legend Search", "Settle the debates. How many times did we actually say it?")
+    q = st.text_input("Search for an inside joke, a name, or a word:", "lol")
+    
+    if q:
+        pattern = r'\b' + re.escape(q) + r'\b'
+        df['temp_count'] = df['message'].str.count(pattern, flags=re.IGNORECASE).fillna(0).astype(int)
+        res = df[df['temp_count'] > 0].copy()
+        total_mentions = int(df['temp_count'].sum())
+        
+        st.markdown(f"<h1 style='text-align:center; color:#8a1187; font-size:60px;'>{total_mentions}</h1>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align:center;'>Total mentions of <b>'{q}'</b> in 2025</p>", unsafe_allow_html=True)
+        
+        if not res.empty:
+            peak_hour = res['timestamp'].dt.hour.value_counts().idxmax()
+            time_display = f"{peak_hour:02d}:00"
+            user_counts = df.groupby('sender')['temp_count'].sum().sort_values(ascending=False)
+            top_user = user_counts.index[0]
+            top_val = int(user_counts.values[0])
+            
+            st.info(f"🏆 {top_user} is the biggest fan of this word, saying it {top_val} times.")
+            st.write(f"⏰ This word is most commonly used around {time_display}.")
+        else:
+            st.warning(f"Nobody said '{q}' as a standalone word this year!")
 
 def final_wrap_up_slide():
     m = st.session_state.metrics
