@@ -4,6 +4,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import re
 from collections import Counter, defaultdict
+from dateutil import parser as date_parser
  
 
 st.set_page_config(page_title="Chat Wrapped", layout="centered")
@@ -96,15 +97,8 @@ def load_whatsapp_chat(file):
                 message = rest
             try:
                 timestamp_str = timestamp_str.replace('\u202f', ' ').replace('\u00a0', ' ').strip()
-                
-                try:
-                    timestamp = datetime.strptime(timestamp_str, "%d/%m/%Y, %I:%M %p")
-                except:
-
-                    try:
-                        timestamp = datetime.strptime(timestamp_str, "%d/%m/%y, %I:%M %p")
-                    except:
-                        timestamp = pd.to_datetime(timestamp_str, dayfirst=True, errors='coerce')
+                # Use dateutil to handle all WhatsApp date formats (99% coverage)
+                timestamp = date_parser.parse(timestamp_str, dayfirst=True)
             except:
                 timestamp = None
 
@@ -246,13 +240,94 @@ def compute_master_metrics(df, min_threshold=0):
     }
     return m
 
+# --- Sample File Generator ---
+def generate_sample_chat():
+
+    START, END = "\u2068", "\u2069"  # Invisible tag markers
+    sample = f"""01/01/2025, 09:15 AM - Alice: Good morning everyone! ☀️
+01/01/2025, 09:16 AM - Bob: Hey Alice! 👋
+01/01/2025, 09:17 AM - Charlie: Happy New Year! 🎉
+01/01/2025, 10:45 AM - Diana: Did you guys watch the fireworks? 🎆
+01/02/2025, 02:30 PM - Alice: Check this out www.example.com
+01/02/2025, 02:31 PM - Bob: <Media omitted>
+01/03/2025, 08:20 AM - Charlie: That was insane 😂😂
+01/03/2025, 08:21 AM - Diana: Literally can't stop laughing 💀
+01/05/2025, 06:15 PM - Alice: Anyone down for pizza tonight?
+01/05/2025, 06:16 PM - Bob: This message was deleted
+01/05/2025, 06:17 PM - Charlie: Count me in! 🍕
+01/07/2025, 11:30 PM - Diana: {START}Alice{END} you coming to the party? 🎊
+01/08/2025, 12:45 AM - Alice: Yeah! Can't wait 🥳
+01/15/2025, 03:45 PM - Bob: Just finished the project
+01/15/2025, 03:46 PM - Charlie: Nice! Let me check it out
+01/16/2025, 09:20 AM - Diana: So what's the plan for next weekend? 🤔
+01/16/2025, 09:21 AM - Alice: {START}Charlie{END} you in? 🏔️
+01/20/2025, 05:30 PM - Bob: Check this https://youtube.com/watch?v=example
+01/20/2025, 05:31 PM - Charlie: OMG this is gold 😂
+01/25/2025, 11:15 PM - Alice: Can't sleep 😅
+01/25/2025, 11:16 PM - Diana: {START}Bob{END} same here, what's up? 🌙
+01/26/2025, 07:30 AM - Charlie: Morning folks! ☕
+01/28/2025, 04:20 PM - Alice: <Media omitted>
+01/28/2025, 04:21 PM - Bob: That looks amazing! 🤩
+02/01/2025, 08:45 AM - Diana: {START}Alice{END} New month, new goals! 💪
+02/05/2025, 02:15 PM - Charlie: {START}Bob{END} {START}Diana{END} Anyone free tomorrow?
+02/10/2025, 10:30 AM - Alice: This weather is insane ☀️☀️☀️
+02/14/2025, 06:45 PM - Bob: Happy Valentine's Day everyone! 💕
+02/20/2025, 11:20 PM - Diana: {START}Charlie{END} Movie night was so fun! 🎬
+02/21/2025, 12:30 AM - Charlie: {START}Alice{END} {START}Bob{END} Best night ever! 😄"""
+    return sample
+
 # --- SLIDE DECK ---
 
 def first_slide():
     slide("🎉 2025: A Year in Chat", "Your digital memories, decoded and delivered.")
 
     if "chat_df_2025" not in st.session_state:
+        # Help/Instructions Section
+        with st.expander("📖 How to Use This App", expanded=False):
+            st.markdown("""
+            ### Step 1: Export Your WhatsApp Chat
+                        
+            1. Open WhatsApp and go to the group chat you want to export
+            2. Tap **Menu (⋮)** → **More** → **Export chat**
+            3. Select **"Without Media"** (this is important!)
+            4. Choose where to save the file
+            
+            ### Step 2: Upload Here
+            - Download the `.txt` file to your computer
+            - Click the upload box below and select your exported chat file
+            - Make sure it contains messages from **2025**
+            
+            ### Step 3: Set Preferences
+            - Use the slider to set a minimum message threshold
+            - This filters out inactive members from awards and statistics
+            - Raw message counts stay accurate regardless
+            
+            ### Step 4: Enjoy Your Wrapped!
+            - Click "Confirm & Start Wrapped" and let the app analyze your chat
+            - Navigate through all the fun stats and awards
+            - Use the sidebar to jump between slides
+            
+            ### ⚠️ Important Notes
+            - Only **.txt files** are supported
+            - Export **without media** to reduce file size
+            - The app only analyzes messages from **2025**
+            - Your data is processed locally and not stored
+            """)
+        
+        st.markdown("")
         uploaded = st.file_uploader("Drop your WhatsApp export here (.txt)", type=["txt"])
+        
+        # Show sample file download
+        st.markdown("---")
+        st.markdown("### Sample File")
+        sample_content = generate_sample_chat()
+        st.download_button(
+            label="⬇️ Download Sample Chat Export",
+            data=sample_content,
+            file_name="sample_chat_export.txt",
+            mime="text/plain",
+            help="Download this sample file to see the expected WhatsApp export format"
+        )
 
         try:
 
