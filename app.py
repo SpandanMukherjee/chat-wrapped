@@ -50,22 +50,30 @@ def slide(title, subtitle, gradient=("purple", "pink")):
 
 # --- Safety Helpers ---
 def safe_idxmax(s, default="None"):
+
     try:
+
         if getattr(s, "empty", False):
             return default
         return s.idxmax()
+    
     except Exception:
+
         try:
             return max(s) if s else default
         except Exception:
             return default
 
 def safe_idxmin(s, default="None"):
+
     try:
+
         if getattr(s, "empty", False):
             return default
         return s.idxmin()
+    
     except Exception:
+
         try:
             return min(s) if s else default
         except Exception:
@@ -104,14 +112,29 @@ def load_whatsapp_chat(file):
 
     return pd.DataFrame(data)
 
+# --- Threshold Filter ---
+def filter_df_by_threshold(df, min_messages):
+
+    if min_messages <= 0:
+        return df
+    
+    sender_counts = df['sender'].value_counts()
+    valid_senders = sender_counts[sender_counts >= min_messages].index
+    return df[df['sender'].isin(valid_senders)]
+
 # --- PERFORMANCE ENGINE ---
 @st.cache_data(show_spinner=False)
-def compute_master_metrics(df):
+def compute_master_metrics(df, min_threshold=0):
     m = {}
+    df_orig = df.copy()  # Keep original for raw counts
     df = df.copy().sort_values('timestamp')
+    df_filtered = filter_df_by_threshold(df, min_threshold)  # Filtered for ratios
     df['hour'] = df['timestamp'].dt.hour
     df['weekday'] = df['timestamp'].dt.day_name()
-    total_counts = df['sender'].value_counts()
+    df_filtered['hour'] = df_filtered['timestamp'].dt.hour
+    df_filtered['weekday'] = df_filtered['timestamp'].dt.day_name()
+    total_counts = df['sender'].value_counts()  # Raw counts
+    total_counts_filtered = df_filtered['sender'].value_counts()  # Filtered counts
     
     # Volume
     df['date_only'] = df['timestamp'].dt.date
@@ -123,13 +146,13 @@ def compute_master_metrics(df):
     df['month_dt'] = df['timestamp'].dt.to_period('M').dt.to_timestamp()
     m['monthly_counts'] = df.groupby('month_dt').size()
     
-    # Emoji Intelligence
+    # Emoji Intelligence (using filtered data for per-message averages)
     all_emojis = []
     sender_emoji_counts = Counter()
     sender_emoji_map = defaultdict(Counter)
     msg_counts = Counter()
 
-    for msg, sender in zip(df["message"], df["sender"]):
+    for msg, sender in zip(df_filtered["message"], df_filtered["sender"]):
 
         if not msg or not sender: continue
         msg_counts[sender] += 1
@@ -148,24 +171,25 @@ def compute_master_metrics(df):
     m['media_counts'] = df[df['message'].str.contains("<Media omitted", na=False)]['sender'].value_counts()
     m['link_counts'] = df[df['message'].str.contains(LINK_REGEX, na=False)]['sender'].value_counts()
     
-    # Time Analysis
-    m['morning_ratio'] = (df[(df['hour'] >= 4) & (df['hour'] < 12)]['sender'].value_counts() / total_counts).fillna(0)
-    m['night_ratio'] = (df[(df['hour'] >= 21) | (df['hour'] < 4)]['sender'].value_counts() / total_counts).fillna(0)
-    m['weekend_ratio'] = (df[df['weekday'].isin(["Saturday", "Sunday"])]['sender'].value_counts() / total_counts).fillna(0)
-    m['weekday_ratio'] = (df[df['weekday'].isin(["Monday","Tuesday","Wednesday","Thursday","Friday"])]['sender'].value_counts() / total_counts).fillna(0)
+    # Time Analysis (using filtered data for ratios)
+    m['morning_ratio'] = (df_filtered[(df_filtered['hour'] >= 4) & (df_filtered['hour'] < 12)]['sender'].value_counts() / total_counts_filtered).fillna(0)
+    m['night_ratio'] = (df_filtered[(df_filtered['hour'] >= 21) | (df_filtered['hour'] < 4)]['sender'].value_counts() / total_counts_filtered).fillna(0)
+    m['weekend_ratio'] = (df_filtered[df_filtered['weekday'].isin(["Saturday", "Sunday"])]['sender'].value_counts() / total_counts_filtered).fillna(0)
+    m['weekday_ratio'] = (df_filtered[df_filtered['weekday'].isin(["Monday","Tuesday","Wednesday","Thursday","Friday"])]['sender'].value_counts() / total_counts_filtered).fillna(0)
 
-    # Complexity
+    # Complexity (using filtered data for averages)
     df["msg_len"] = df["message"].apply(lambda x: len(x) if isinstance(x, str) else 0)
-    m['sender_avg_len'] = df.groupby("sender")["msg_len"].mean()
+    df_filtered["msg_len"] = df_filtered["message"].apply(lambda x: len(x) if isinstance(x, str) else 0)
+    m['sender_avg_len'] = df_filtered.groupby("sender")["msg_len"].mean()
 
     # Evidence Buster Logic
     deleted_df = df[df['message'].str.contains("This message was deleted|You deleted this message", na=False)]
     m['deleted_counts'] = deleted_df['sender'].value_counts()
     m['deleted_ratio'] = (m['deleted_counts'] / total_counts.replace(0, 1)).fillna(0).sort_values(ascending=False)
 
-    # Rapid Fire
+    # Rapid Fire (using filtered data)
     sender_gaps = {}
-    df_sorted = df.sort_values('timestamp')
+    df_sorted = df_filtered.sort_values('timestamp')
 
     for sender, group in df_sorted.groupby('sender'):
         gaps = group['timestamp'].diff().dt.total_seconds().dropna()
@@ -175,14 +199,14 @@ def compute_master_metrics(df):
 
     m['sender_gaps'] = sender_gaps
 
-    # --- Connections (Tags) ---
+    # --- Connections (Tags) --- (using filtered data)
     pair_counts = Counter()
     total_tags_sent = Counter()
     total_tags_received = Counter()
     START, END = "\u2068", "\u2069"
-    real_members = set(df["sender"].unique()) - {"Meta AI"}
+    real_members = set(df_filtered["sender"].unique()) - {"Meta AI"}
     
-    for sender, msg in zip(df["sender"], df["message"].fillna("")):
+    for sender, msg in zip(df_filtered["sender"], df_filtered["message"].fillna("")):
         idx = 0
 
         while True:
@@ -201,7 +225,7 @@ def compute_master_metrics(df):
     m['total_tags_received'] = total_tags_received
     m['real_members'] = real_members
 
-    # Social Rhythms
+    # Social Rhythms (using filtered data)
     df_sorted['gap_h'] = df_sorted['timestamp'].diff().dt.total_seconds() / 3600
     m['starters'] = df_sorted[(df_sorted['gap_h'] >= 3) | (df_sorted['gap_h'].isna())]['sender'].value_counts()
     df_sorted['next_gap'] = df_sorted['gap_h'].shift(-1)
@@ -209,7 +233,7 @@ def compute_master_metrics(df):
 
     # --- The Big Summary ---
     m['hall_of_fame'] = {
-        'boss': total_counts.idxmax(),
+        'boss': total_counts_filtered.idxmax() if not total_counts_filtered.empty else "None",
         'sniper': total_tags_sent.most_common(1)[0][0] if total_tags_sent else "None",
         'magnet': total_tags_received.most_common(1)[0][0] if total_tags_received else "None",
         'starter': m['starters'].idxmax() if not m['starters'].empty else "None",
@@ -243,14 +267,38 @@ def first_slide():
                     st.error("No messages found for the year 2025. Please upload a valid WhatsApp chat export that includes messages from 2025.")
                 else:
                     st.session_state.chat_df_2025 = df
-                    st.session_state.metrics = compute_master_metrics(df)
-                    st.session_state.slide = 1
-                    st.rerun()
+                    if "min_threshold" not in st.session_state:
+                        st.session_state.min_threshold = 0
 
         except Exception as e:
             st.error(f"Error processing chat file:")
             st.info("Make sure the file is a valid WhatsApp chat export (without media) in .txt format.")
             print(f"Dev Log: {e}")
+    
+    # Show slider and confirmation after file is loaded
+    if "chat_df_2025" in st.session_state and "metrics" not in st.session_state:
+        st.markdown("### ✨ Set Your Preferences")
+        
+        threshold = st.slider(
+            "Minimum messages per member (for awards & ratios):",
+            min_value=0,
+            max_value=min(200, len(st.session_state.chat_df_2025) // 2),
+            value=0,
+            step=1,
+            help="Members with fewer messages won't be considered for awards and ratio calculations. Raw message counts are unaffected."
+        )
+        
+        # Disable button while processing
+        button_disabled = "processing" in st.session_state
+        
+        if st.button("✅ Confirm & Start Wrapped", use_container_width=True, disabled=button_disabled):
+            st.session_state.processing = True
+            st.toast("✨ Processing your preferences... This may take a moment for large files.", icon="⏳")
+            st.session_state.min_threshold = threshold
+            st.session_state.metrics = compute_master_metrics(st.session_state.chat_df_2025, threshold)
+            st.session_state.slide = 1
+            del st.session_state.processing
+            st.rerun()
 
 def total_messages_slide():
     
@@ -700,25 +748,29 @@ if "chat_df_2025" in st.session_state:
     for fn, n in active:
         slides.append(fn); slide_names.append(n)
 
-# Sidebar
-st.sidebar.title("📑 The Slide Deck")
-selected = st.sidebar.radio("Jump to", range(len(slides)), format_func=lambda i: slide_names[i], index=st.session_state.slide)
+# Always show the current slide
+if st.session_state.slide < len(slides):
+    slides[st.session_state.slide]()
 
-if selected != st.session_state.slide:
-    st.session_state.slide = selected; st.rerun()
+if "metrics" in st.session_state:
+    # Sidebar
+    st.sidebar.title("📑 The Slide Deck")
+    selected = st.sidebar.radio("Jump to", range(len(slides)), format_func=lambda i: slide_names[i], index=st.session_state.slide)
 
-st.progress((st.session_state.slide + 1) / len(slides))
-slides[st.session_state.slide]()
+    if selected != st.session_state.slide:
+        st.session_state.slide = selected; st.rerun()
 
-c1, c2 = st.columns([8,1])
+    st.progress((st.session_state.slide + 1) / len(slides))
 
-with c1:
-    st.write("")
+    c1, c2 = st.columns([8,1])
 
-    if st.session_state.slide > 0 and st.button("← Previous"):
-        st.session_state.slide -= 1; st.rerun()
-with c2:
-    st.write("")
+    with c1:
+        st.write("")
 
-    if st.session_state.slide < len(slides)-1 and st.button("Next →"):
-        st.session_state.slide += 1; st.rerun()
+        if st.session_state.slide > 0 and st.button("← Previous"):
+            st.session_state.slide -= 1; st.rerun()
+    with c2:
+        st.write("")
+
+        if st.session_state.slide < len(slides)-1 and st.button("Next →"):
+            st.session_state.slide += 1; st.rerun()
