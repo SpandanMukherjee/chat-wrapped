@@ -6,7 +6,6 @@ import re
 from collections import Counter, defaultdict
 from dateutil import parser as date_parser
  
-
 st.set_page_config(page_title="Chat Wrapped", layout="centered")
 
 # --- Constants & Regex ---
@@ -15,7 +14,6 @@ LINK_REGEX = re.compile(r'https?://|www\.')
 
 # --- Style Helpers ---
 def clean_plot(ax, fig, title, xlabel="", ylabel=""):
-    """Keeps the original look but cleans up the spines as requested."""
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.set_title(title, fontsize=14, pad=15, fontweight='bold')
@@ -95,9 +93,9 @@ def load_whatsapp_chat(file):
             else:
                 sender = None
                 message = rest
+
             try:
                 timestamp_str = timestamp_str.replace('\u202f', ' ').replace('\u00a0', ' ').strip()
-                # Use dateutil to handle all WhatsApp date formats (99% coverage)
                 timestamp = date_parser.parse(timestamp_str, dayfirst=True)
             except:
                 timestamp = None
