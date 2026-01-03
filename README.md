@@ -9,7 +9,7 @@ A Python-based web application for localized analysis of WhatsApp chat exports. 
 3. Python-Datetime: Time-series normalization for period-specific activity tracking.
 
 # 🚀 Technical Features
-1. Regex Parsing: Custom regular expression engine built to handle diverse OS-level timestamp variations (iOS vs. Android formats).
+1. Regex Parsing: Custom regular expression engine built to handle diverse OS-level timestamp variations (Android formats).
 2. Stateless Architecture: Engineered for absolute privacy; data is processed entirely in-memory and purged upon session termination.
 3. Error Handling: Global exception handling to manage malformed text inputs and unsupported file encodings (UTF-8/BOM).
 4. KPI Generation: Computation of 25+ metrics, including peak activity hours, response latency, and emoji distribution.
